@@ -1,0 +1,29 @@
+﻿Staff,Lesson,Weekday,Prd,Rm,Wk,Yr
+Mr Adams,7A/Maths,Thu,P1,M1,A,Y7
+Mr Adams,8B/Maths,Wed,P1,M1,B,Y8
+Mr Adams,9C/Maths,Thu,P3,M1,A,Y9
+Mr Adams,10A/Maths,Thu,P2,M1,B,Y10
+Mr Adams,11B/Maths,Wed,P2,M1,B,Y11
+Ms Baker,8A/English,Tue,P3,M2,A,Y8
+Ms Baker,9B/English,Fri,P3,M2,B,Y9
+Ms Baker,10C/English,Mon,P1,M2,B,Y10
+Ms Baker,11A/English,Fri,P3,M2,A,Y11
+Ms Baker,7B/English,Thu,P1,M2,AB,Y7
+Mrs Clarke,9A/Science,Thu,P3,E1,A,Y9
+Mrs Clarke,10B/Science,Mon,P2,E1,A,Y10
+Mrs Clarke,11C/Science,Fri,P1,E1,A,Y11
+Mrs Clarke,7A/Science,Fri,P4,E1,B,Y7
+Mrs Clarke,8B/Science,Mon,P1,E1,A,Y8
+Mr Davies,10A/History,Thu,P4,E2,A,Y10
+Mr Davies,11B/History,Tue,P4,E2,B,Y11
+Mr Davies,7C/History,Thu,P1,E2,A,Y7
+Mr Davies,8A/History,Thu,P3,E2,A,Y8
+Mr Davies,9B/History,Wed,P4,E2,B,Y9
+Ms Evans,11A/Geography,Tue,P1,S1,B,Y11
+Ms Evans,8C/Geography,Mon,P3,S1,A,Y8
+Ms Evans,9A/Geography,Thu,P3,S1,A,Y9
+Ms Evans,10B/Geography,Wed,P1,S1,AB,Y10
+Mr Foster,7A/Computing,Mon,P1,S2,A,Y7
+Mr Adams,7A/Maths,Funday,P1,M1,A,Y7
+Ms Baker,,Mon,P2,E1,B,
+Ms Baker,9Z/Test,Tue,P2,E1,Week C,Y9
