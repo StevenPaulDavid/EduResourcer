@@ -3,7 +3,7 @@
   const ER = (window.ER = window.ER || {});
   const S = (ER.store = {});
 
-  S.DIRS = ['Class_Data', 'Resource_Data', 'Allocation_Data', 'Rule_Data', 'Run_Data', 'Login_Data'];
+  S.DIRS = ['Class_Data', 'Resource_Data', 'Allocation_Data', 'Rule_Data', 'Run_Data', 'Shared_Data', 'Login_Data'];
   S.supported = typeof window.showDirectoryPicker === 'function';
   S.demoSupported = !!(navigator.storage && navigator.storage.getDirectory);
 

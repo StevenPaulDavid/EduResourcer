@@ -685,7 +685,7 @@
       return u.got ? `${u.got} of ${u.wanted} only` : 'Nothing free';
     };
     const skipped = new Set(plan.unassignedKeys || []);
-    const chip = (r, ghost, manual, removed) => h('span', { class: 'tt-chip' + (ghost ? ' ghost' : '') + (manual ? ' manual' : '') + (removed ? ' removed' : ''), title: removed ? 'Will be removed when you apply' : null, dataset: { t: String(M.typeColour(r.typeId)) } }, (removed ? '✕ ' : manual ? '✎ ' : ghost ? '+ ' : '') + r.name);
+    const chip = (r, ghost, manual, removed) => h('span', { class: 'tt-chip' + (ghost ? ' ghost' : '') + (manual ? ' manual' : '') + (removed ? ' removed' : ''), title: removed ? 'Will be removed when you apply' : null, dataset: { t: String(M.typeColour(r.typeId)) } }, h('span', { class: 'chip-dot' }), (removed ? '✕ ' : manual ? '✎ ' : ghost ? '+ ' : '✓ ') + r.name);
     const rows = M.periods.map((p) => h('tr', null, h('th', { class: 'tt-p', scope: 'row' }, h('small', null, 'Period'), h('strong', null, p.label)),
       M.days.map((d) => {
         const list = (cells.get(d + '|' + p.pkey) || []).sort((a, b) => U.natCmp(a.name, b.name));
@@ -697,7 +697,9 @@
           const pr = cl.u;
           // red = the lesson would have nothing at all; orange = it has a resource but is short of what the step asks,
           // or is covered only by a resource from outside the pool (standing in for the rule's own)
-          const state = cl.state === 'red' ? 'unmet' : cl.state === 'orange' ? 'partial' : skipped.has(c.key) ? 'skipped' : '';
+          // green = has / will have its resource, orange = short or covered from outside the pool, red = nothing at all
+          const hasChips = have.length > 0 || add.length > 0;
+          const state = cl.state === 'red' ? 'unmet' : cl.state === 'orange' ? 'partial' : hasChips ? 'okay' : skipped.has(c.key) ? 'skipped' : '';
           const hadNames = cl.kind === 'short' && pr.got === 0 ? AU.existingNames(plan, c.key) : [];
           const outNames = cl.kind === 'outside' ? cl.out.map((p) => M.resByKey.get(p.resKey).name) : [];
           const why = cl.state === 'red' ? 'Cannot get a resource: ' + pr.reason
@@ -716,13 +718,14 @@
       })));
     const tally = AU.tally(plan), nUnmet = tally.red, nPartial = tally.orange;
     const legend = h('div', { class: 'tt-legend' },
+      h('span', { class: 'lg okay' }, '✓ Green: has or will have its resource'),
       h('span', { class: 'lg unmet' }, `Red: would have no resource at all (${nUnmet})`),
       nPartial ? h('span', { class: 'lg partial' }, `Orange: short of the rule, or covered from outside the pool (${nPartial})`) : null,
       plan.unassigned ? h('span', { class: 'lg skipped' }, `Faded: not covered by any step (${plan.unassigned})`) : null,
       h('span', { class: 'muted small' }, 'Dashed tags are proposed (✎ = added by you); solid tags are already allocated (✕ = will be removed). Click any lesson to see what is blocking it and adjust it.'));
     const seg = h('div', { class: 'seg' }, ['A', 'B'].map((w) => h('button', { class: 'seg-btn' + (S.week === w ? ' on' : ''), type: 'button', onclick: () => { S.week = w; renderPreview(); } }, 'Week ' + w)));
     return h('div', { class: 'stack' }, h('div', { class: 'inline' }, seg), legend,
-      h('div', { class: 'tt-wrap' }, h('table', { class: 'tt' }, h('thead', null, h('tr', null, h('th', { class: 'tt-corner' }, ''), M.days.map((d) => h('th', null, d)))), h('tbody', null, rows))));
+      h('div', { class: 'tt-wrap pv' }, h('table', { class: 'tt' }, h('thead', null, h('tr', null, h('th', { class: 'tt-corner' }, ''), M.days.map((d) => h('th', null, d)))), h('tbody', null, rows))));
   }
 
   async function applyPlan() {
@@ -751,6 +754,7 @@
   }
   UI.render = (container) => { S.host = container; if (!['edit', 'preview', 'clear'].includes(S.view)) S.view = 'home'; render(); };
   // after a background sync: refresh the lists only when nobody is in the middle of editing
+  UI.multiPick = multiPick;    // reused by the shared-resources page
   // used by the Allocate screen's "Clear…" shortcut (prefill = scope lists like { years: [...], subjects: [...] })
   UI.openClear = (prefill) => { openClear(prefill); };
   UI.softRefresh = () => { if (S.host && S.view === 'home') renderHome(); };

@@ -128,6 +128,8 @@
       }
     }
     for (const [ck] of hasKeys) { const c = M.classByKey.get(ck); weeksOf(c).forEach((w) => bump(counters, `${c.name}|${w}`)); }
+    // a shared resource's groups already hold it in their own lessons (worked out live), so it is not free then
+    if (ER.shared) for (const r of poolItems) { const held = ER.shared.heldSlots(r.key); if (held.length) addOcc(r.key, held); }
     for (const set of occ.values()) usedBefore += set.size;
 
     const totalSlots = Math.max(1, M.days.length * M.periods.length * 2);
@@ -309,6 +311,11 @@
     };
     for (const a of M.allocs) if (!a.orphan && !isRemoved(plan, a.resKey, a.classKey)) add(a.resKey, a.classKey);
     for (const p of plan.placements) if (!ignore || ignore.resKey !== p.resKey || ignore.classKey !== p.classKey) add(p.resKey, p.classKey);
+    // lessons where a shared resource's groups hold it are not free for anyone else
+    if (ER.shared) for (const cfg of M.shared) for (const s of ER.shared.heldSlots(cfg.resKey)) {
+      if (!occ.has(cfg.resKey)) occ.set(cfg.resKey, new Set());
+      occ.get(cfg.resKey).add(s);
+    }
     return occ;
   };
 

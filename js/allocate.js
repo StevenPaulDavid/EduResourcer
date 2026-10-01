@@ -23,7 +23,9 @@
         ? `${res.typeName}: ${res.name}${alloc.conflict ? ' — CLASHES with another booking' : ''}${alloc.by ? '\nAllocated by ' + alloc.by : ''}`
         : `${res.typeName}: ${res.name}${res.faculty ? '\nFaculty: ' + res.faculty : ''}${res.location ? '\nLocation: ' + res.location : ''}${res.notes ? '\n' + res.notes : ''}\nAllocated to ${used} class slot(s)`,
       draggable: !!(alloc ? alloc._editable : canDrag()),
-    }, h('span', { class: 'chip-dot' }), h('span', { class: 'chip-name' }, res.name),
+    }, h('span', { class: 'chip-dot' }),
+      alloc && !alloc.conflict ? h('span', { class: 'chip-ok', 'aria-hidden': 'true' }, '✓') : null,   // green + tick = allocated
+      h('span', { class: 'chip-name' }, res.name),
       bank && used ? h('span', { class: 'chip-count' }, String(used)) : null,
       alloc && alloc._editable ? h('button', { class: 'chip-x', type: 'button', 'aria-label': 'Remove ' + res.name }, '×') : null,
       alloc && alloc.conflict ? h('span', { class: 'chip-warn', 'aria-hidden': 'true' }, '⚠') : null);
@@ -37,12 +39,21 @@
       alloc._editable = editable;
       return chipEl(res, { alloc });
     });
-    return h('div', { class: 'card' + (mine ? ' mine' : '') + (editable ? '' : ' locked'), dataset: { key: c.key } },
+    // shared-resource markers: has it / shared with … / not this lesson (worked out live from the groups and priorities)
+    // green ✓ has it · blue ⇄ shared, staff to agree · orange ✕ shared resource, cannot have it this lesson
+    const markData = ER.shared ? ER.shared.markersFor(c.key, ui.week) : [];
+    const SYMBOL = { holder: '✓ ', shared: '⇄ ', missing: '✕ ' };
+    const marks = markData.map((m) =>
+      h('span', { class: 'chip sh-mark sh-' + m.status, title: m.title }, h('span', { class: 'chip-name' }, SYMBOL[m.status] + m.text)));
+    // only cards with something to look at get a coloured edge: red (real clash) > orange > blue
+    const clash = M.resourcesOfClass(c.key).some((x) => x.res && x.alloc.conflict);
+    const edge = clash ? 'edge-red' : markData.some((m) => m.status === 'missing') ? 'edge-orange' : markData.some((m) => m.status === 'shared') ? 'edge-blue' : '';
+    return h('div', { class: 'card' + (mine ? ' mine' : '') + (editable ? '' : ' locked') + (edge ? ' ' + edge : ''), dataset: { key: c.key } },
       h('div', { class: 'card-top' }, h('strong', { class: 'card-name' }, c.name),
         c.week === 'AB' ? h('span', { class: 'wk-badge', title: 'Runs every week' }, 'A+B') : null),
       h('div', { class: 'card-meta' }, [c.year ? h('span', { class: 'yr-badge', title: c.year }, U.yearShort(c.year)) : null, c.room ? h('span', null, '⌂ ' + c.room) : null, c.teacher ? h('span', null, c.teacher) : null,
         c.subject && !U.norm(c.name).includes(U.norm(c.subject)) ? h('span', { class: 'subj-tag', title: c.faculty ? `${c.faculty} · ${c.subject}` : c.subject }, c.subject) : null]),
-      h('div', { class: 'card-chips' }, chips.length ? chips : (editable ? h('span', { class: 'drop-hint' }, 'Drop a resource here') : null)));
+      h('div', { class: 'card-chips' }, chips.length || marks.length ? [...chips, ...marks] : (editable ? h('span', { class: 'drop-hint' }, 'Drop a resource here') : null)));
   }
 
   const matches = (c) => {
@@ -222,11 +233,23 @@
     tipEl.hidden = false;
   }
 
+  // an action can return false to cancel quietly (no "done" message)
   async function perform(fn, okMsg) {
-    try { await fn(); if (okMsg) toast(okMsg, 'success', 2200); }
+    try { const r = await fn(); if (r !== false && okMsg) toast(okMsg, 'success', 2200); }
     catch (err) { toast(err.message || String(err), 'error'); }
     AL.refreshAll();
   }
+
+  // Booking a shared resource by hand wins the lesson, so warn which groups lose it before doing it.
+  async function sharedGuard(resKey, classKey) {
+    if (!ER.shared) return true;
+    const lose = ER.shared.affectedByBooking(resKey, classKey);
+    if (!lose.length) return true;
+    const res = M.resByKey.get(resKey), cls = M.classByKey.get(classKey);
+    return U.confirm(`${res ? res.name : 'This resource'} is a shared resource. Booking it for ${cls ? cls.name : 'this class'} by hand wins this lesson, so ${lose.join(', ')} will lose it.`,
+      { ok: 'Book it anyway', title: 'Shared resource' });
+  }
+  const bookShared = async (resKey, classKey) => ((await sharedGuard(resKey, classKey)) ? M.allocate(resKey, classKey) : false);
 
   function arm(resKey) {
     ui.armed = ui.armed === resKey ? null : resKey;
@@ -316,7 +339,7 @@
       const d = ui.drag, key = card.dataset.key;
       endDrag();
       if (d.kind === 'alloc') perform(() => M.moveAlloc(d.id, key), 'Resource moved.');
-      else perform(() => M.allocate(d.resKey, key), 'Resource assigned.');
+      else perform(() => bookShared(d.resKey, key), 'Resource assigned.');
     });
     gridEl.addEventListener('click', (e) => {
       const x = e.target.closest('.chip-x');
@@ -327,7 +350,7 @@
       }
       if (ui.armed) {
         const card = e.target.closest('.card');
-        if (card && !e.target.closest('.chip')) perform(() => M.allocate(ui.armed, card.dataset.key), 'Resource assigned.');
+        if (card && !e.target.closest('.chip')) perform(() => bookShared(ui.armed, card.dataset.key), 'Resource assigned.');
       }
     });
   }
@@ -463,7 +486,13 @@
     gridEl = h('div', { class: 'gridwrap' });
     bankEl = h('div', { class: 'bank' });
     tipEl = h('div', { class: 'drop-tip', hidden: true, 'aria-live': 'polite' });
-    container.append(...[toolbar, note ? h('div', { class: 'note-bar' }, note) : null, armedEl, gridEl, bankEl, tipEl].filter(Boolean));
+    // colour key: one meaning per colour
+    const key = h('div', { class: 'status-key', role: 'note', 'aria-label': 'Colour key' },
+      h('span', { class: 'k k-green' }, '✓ Allocated'),
+      h('span', { class: 'k k-blue' }, '⇄ Shared, staff to agree'),
+      h('span', { class: 'k k-orange' }, '✕ Shared, can’t have it this lesson'),
+      h('span', { class: 'k k-red' }, '⚠ Clash'));
+    container.append(...[toolbar, note ? h('div', { class: 'note-bar' }, note) : null, key, armedEl, gridEl, bankEl, tipEl].filter(Boolean));
     wire();
     AL.refreshAll();
   };

@@ -57,10 +57,18 @@ per browser, and printing is always in light colours.
   covered only by an outside-the-pool resource shows orange.
   **Auto-fix** fills all the short lessons in one go (pool first, then outside it; same types as the pool by default),
   and can be undone.
+- **Shared resources with priority** (admins set up, everyone sees): one resource (e.g. the Library Laptop Trolley)
+  shared by groups such as IT, English, Music and Art, each defined by a class filter and a priority level (equal
+  levels = shared, staff agree). Who has it in each lesson is worked out live from the timetable: best priority has it,
+  others are flagged as missing out, equal levels show as shared, and a hand booking wins the lesson. There is a
+  per-lesson timetable per resource, markers on the Allocate grid, and a separate printable/exportable report.
 - **Clear allocations** (same admins): bulk-remove allocations by class (year, faculty, subject, teacher, room,
   named classes, day, period, week type), by resource (type, faculty, item) and by who made them (auto or hand).
   A live count and list show exactly what will go, clearing everything needs you to type CLEAR, and every clear can be
   **restored** from the run history.
+- **Colours**: green ✓ = allocated, blue ⇄ = shared with an equal-priority group (staff talk), orange ✕ = shared
+  resource this class can't have this lesson, red ⚠ = real clash. A key sits above the timetable; resource chips show
+  their type with a small dot, and the bank is neutral.
 - **Finding your place on the grid**: the timetable is a banded table with dark day headers and a period column.
   Hovering or dragging highlights the day, the period and the exact cell, and a banner at the bottom spells out
   what will happen ("Assign Projector P1 on 9B/Maths: Mon · Period 2 · Week A", or why it is blocked).
@@ -77,6 +85,7 @@ per browser, and printing is always in light colours.
 Class_Data/        classes.edr                 (encrypted)
 Resource_Data/     one file per resource type  (encrypted, opaque names)
 Allocation_Data/   one file per allocation     (encrypted, opaque names)
+Shared_Data/       shared-resource groups      (encrypted)
 Rule_Data/         auto-allocate rules         (encrypted)
 Run_Data/          auto-allocate run history   (encrypted)
 Login_Data/        password hashes + wrapped keys, recovery file

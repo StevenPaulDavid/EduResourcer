@@ -5,7 +5,7 @@
   const { h, clear } = ER.util;
   const U = ER.util, M = ER.model, CSV = ER.csv, A = ER.auth;
 
-  const state = { view: 'list', tab: 'resource', type: '', rFaculty: '', res: '', q: '', noRes: false, room: '', teacher: '', year: '', faculty: '', subject: '', fType: '', fFaculty: '', fDay: '', fPeriod: '', fWeek: 'A' };
+  const state = { view: 'list', tab: 'resource', type: '', rFaculty: '', res: '', q: '', noRes: false, room: '', teacher: '', year: '', faculty: '', subject: '', shared: '', fType: '', fFaculty: '', fDay: '', fPeriod: '', fWeek: 'A' };
   let outEl = null;
   let current = null;
 
@@ -16,6 +16,7 @@
     ['subject', 'By subject / faculty'],
     ['room', 'By room'],
     ['teacher', 'By teacher'],
+    ['shared', 'Shared resources'],
     ['free', 'Free resources finder'],
   ];
 
@@ -108,6 +109,52 @@
       sections.push({ title: 'Resources used by these classes', columns: rcols, rows: M.resFaculties.length ? rrows : rrows.map((r) => r.filter((_, i) => i !== 2)) });
     }
     return { title, subtitle: `${rows.length} class slot(s)`, sections };
+  }
+
+  // Shared resource report: contention, staff-to-agree, missed lessons per group, usage per group, free lessons
+  function sharedReport() {
+    const all = ER.shared.all();
+    const list = [...all.values()];
+    if (!list.length) return { title: 'Shared resources', subtitle: 'No shared resources have been set up yet (see the Shared page).', sections: [] };
+    const rz = all.get(state.shared) || list[0];
+    const name = rz.res ? rz.res.name : 'Shared resource';
+    const slotCmpS = (a, b) => U.DAYS.indexOf(a.day) - U.DAYS.indexOf(b.day) || U.natCmp(a.pkey, b.pkey) || U.natCmp(a.week, b.week);
+    const slots = [...rz.slots.values()].sort(slotCmpS);
+    const tag = (x) => `${x.e.c.name}${x.e.group ? ' (' + x.e.group.name + ')' : ' (booked)'}`;
+    const res = (x) => x.e.results[x.w];
+
+    const groups = rz.groupStats.map((g) => [String(g.group.level), g.group.name, ER.auto.describeFilter(g.group.filter), String(g.classes), String(g.holder), String(g.shared), String(g.missing)]);
+
+    const contested = slots.filter((s) => s.entries.length > 1).map((s) => [s.day, s.period, s.week,
+      s.entries.filter((x) => res(x).status !== 'missing').map((x) => tag(x) + (res(x).status === 'shared' ? ' [shared]' : '')).join(', '),
+      s.entries.filter((x) => res(x).status === 'missing').map((x) => `${tag(x)}: ${res(x).reason}`).join('; ')]);
+
+    const toAgree = slots.filter((s) => s.entries.some((x) => res(x).status === 'shared')).map((s) => [s.day, s.period, s.week,
+      s.entries.filter((x) => res(x).status === 'shared').map((x) => `${x.e.c.name} (${x.e.group.name}${x.e.c.teacher ? ', ' + x.e.c.teacher : ''})`).join('  ⇄  ')]);
+
+    const missed = [];
+    for (const s of slots) for (const x of s.entries) if (res(x).status === 'missing') {
+      missed.push({ s, x });
+    }
+    missed.sort((a, b) => a.x.e.level - b.x.e.level || U.natCmp(a.x.e.group.name, b.x.e.group.name) || slotCmpS(a.s, b.s));
+    const missedRows = missed.map(({ s, x }) => [x.e.group.name, x.e.c.name, x.e.c.teacher, s.day, s.period, s.week, res(x).reason]);
+
+    const free = [];
+    for (const w of ['A', 'B']) for (const d of M.days) for (const p of M.periods) {
+      if (!rz.slots.has(`${d}|${p.pkey}|${w}`)) free.push([d, p.label, w]);
+    }
+
+    return {
+      title: `${name}: shared resource report`,
+      subtitle: `Priority ${rz.cfg.groups.slice().sort((a, b) => a.level - b.level).map((g) => g.level + ' ' + g.name).join(', ')}. Counts are lesson slots (Week A and Week B counted separately).`,
+      sections: [
+        { title: 'Groups and priorities', columns: ['Priority', 'Group', 'Which classes', 'Classes', 'Has it', 'Shared', 'Misses out'], rows: groups },
+        { title: 'Lessons wanted by more than one class', columns: ['Day', 'Period', 'Week', 'Has it / shares it', 'Misses out'], rows: contested },
+        { title: 'Staff to agree (same priority, same lesson)', columns: ['Day', 'Period', 'Week', 'Classes sharing'], rows: toAgree },
+        { title: 'Missed lessons by group', columns: ['Group', 'Class', 'Teacher', 'Day', 'Period', 'Week', 'Why'], rows: missedRows },
+        { title: 'Free lessons (nobody in any group is timetabled)', columns: ['Day', 'Period', 'Week'], rows: free },
+      ],
+    };
   }
 
   function freeReport() {
@@ -244,7 +291,7 @@
     return wrap;
   }
 
-  const BUILD = { resource: resourceReport, class: () => classReport('class'), year: () => classReport('year'), subject: () => classReport('subject'), room: () => classReport('room'), teacher: () => classReport('teacher'), free: freeReport };
+  const BUILD = { resource: resourceReport, class: () => classReport('class'), year: () => classReport('year'), subject: () => classReport('subject'), room: () => classReport('room'), teacher: () => classReport('teacher'), shared: sharedReport, free: freeReport };
 
   // ---------- rendering ----------
   function resultDom(rep) {
@@ -268,7 +315,7 @@
 
   function run() {
     if (!outEl) return;
-    current = state.view === 'timetable' && state.tab !== 'free' ? timetableReport() : BUILD[state.tab]();
+    current = state.view === 'timetable' && state.tab !== 'free' && state.tab !== 'shared' ? timetableReport() : BUILD[state.tab]();
     clear(outEl);
     outEl.appendChild(resultDom(current));
   }
@@ -371,6 +418,13 @@
       controls.append(M.years.length
         ? U.field('Year group', sel(state.year, [['', 'All year groups'], ...M.years.map((y) => [y, y])], (v) => { state.year = v; run(); }, 'Year group'))
         : h('p', { class: 'callout warn' }, 'No year groups yet. Include a year group column when you import classes (or let the importer work it out from class names like 9B/Maths).'));
+    } else if (state.tab === 'shared') {
+      const cfgs = [...ER.shared.all().values()];
+      if (!cfgs.length) controls.append(h('p', { class: 'callout warn' }, 'No shared resources have been set up yet. Admins can set them up on the Shared page.'));
+      else {
+        if (!cfgs.some((r) => r.cfg.resKey === state.shared)) state.shared = cfgs[0].cfg.resKey;
+        controls.append(U.field('Shared resource', sel(state.shared, cfgs.map((r) => [r.cfg.resKey, r.res ? r.res.name : '(missing resource)']), (v) => { state.shared = v; run(); }, 'Shared resource')));
+      }
     } else if (state.tab === 'room') {
       controls.append(U.field('Room', sel(state.room, [['', 'All rooms'], ...M.rooms.map((r) => [r, r])], (v) => { state.room = v; run(); }, 'Room')));
     } else if (state.tab === 'teacher') {
@@ -384,7 +438,7 @@
         U.field('Week', sel(state.fWeek, [['A', 'Week A'], ['B', 'Week B']], (v) => { state.fWeek = v; run(); }, 'Week'))].filter(Boolean));
     }
 
-    const viewToggle = state.tab === 'free' ? null : h('div', { class: 'seg', role: 'group', 'aria-label': 'Report layout' }, [['list', 'List'], ['timetable', 'Timetable']].map(([v, t]) =>
+    const viewToggle = state.tab === 'free' || state.tab === 'shared' ? null : h('div', { class: 'seg', role: 'group', 'aria-label': 'Report layout' }, [['list', 'List'], ['timetable', 'Timetable']].map(([v, t]) =>
       h('button', { class: 'seg-btn' + (state.view === v ? ' on' : ''), type: 'button', 'aria-pressed': String(state.view === v), onclick: () => { state.view = v; R.render(container); } }, t)));
 
     const actions = h('div', { class: 'rep-actions' }, viewToggle,
