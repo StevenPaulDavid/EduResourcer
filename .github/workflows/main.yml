@@ -18,7 +18,7 @@ jobs:
       - name: Find latest ZIP
         id: find_zip
         run: |
-          latest=$(ls releases/*.zip | sort -V | tail -n 1)
+          latest=$(ls Release/*.zip | sort -V | tail -n 1)
           echo "latest_zip=$latest" >> $GITHUB_OUTPUT
 
       - name: Upload latest ZIP
