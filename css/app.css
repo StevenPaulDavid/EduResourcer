@@ -552,35 +552,64 @@ body.armed .card.can-drop { cursor: copy; }
 .tt-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
 .tt-chip { font-size: 10.5px; font-weight: 650; padding: 1px 6px; border-radius: 99px; background: var(--ts); color: var(--tc); border: 1px solid color-mix(in srgb, var(--tc) 35%, transparent); }
 .tt-intro { display: flex; flex-direction: column; gap: 4px; }
-@page tt { size: A4 landscape; margin: 9mm; }
+@page tt { size: A4 portrait; margin: 10mm; }
 
 /* ---------- printing ---------- */
 #printArea { display: none; }
 @media print {
+  /* Timetables: simple black-on-white grid, one week per A4 portrait page, stretched to fill the page.
+     (Each page is its own .tt-sheet; the table height is a minimum, so a long cell list just continues on the next page.) */
   body.printing #printArea.tt-print .tt-intro { display: none; }
-  body.printing #printArea.tt-print .tt-sheet { page: tt; break-after: page; border: 0; box-shadow: none; padding: 0; gap: 6px; border-radius: 0; }
+  body.printing #printArea.tt-print .tt-sheet { page: tt; break-after: page; border: 0; box-shadow: none; padding: 0; gap: 4mm; border-radius: 0; background: #fff; color: #000; }
   body.printing #printArea.tt-print .tt-sheet:last-child { break-after: auto; }
-  body.printing #printArea.tt-print .tt-head h2 { font-size: 17px; }
-  body.printing #printArea.tt-print .tt-week { break-inside: avoid; }
-  body.printing #printArea.tt-print .tt-week h3 { margin: 2px 0 3px; font-size: 12px; }
-  body.printing #printArea.tt-print .tt td { height: 11.5mm; padding: 2px; }
-  body.printing #printArea.tt-print .tt th { padding: 3px 4px; font-size: 10px; }
-  body.printing #printArea.tt-print .tt-entry { font-size: 9px; padding: 1px 4px; margin-bottom: 2px; }
-  body.printing #printArea.tt-print .tt-l2 { font-size: 8px; }
-  body.printing #printArea.tt-print .tt-chip { font-size: 7.5px; padding: 0 4px; }
-  .tt th, .tt td, .tt-entry, .tt-chip, .tt th.tt-p { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  /* whole-school sheets: lots of classes per cell, so rows grow and the table may continue on the next page */
-  body.printing #printArea.tt-print .tt-big .tt-week { break-inside: auto; }
-  body.printing #printArea.tt-print .tt-big .tt tr { break-inside: avoid; }
-  body.printing #printArea.tt-print .tt-big .tt td { height: auto; min-height: 9mm; padding: 2px; }
-  body.printing #printArea.tt-print .tt-big .tt th { padding: 3px 4px; }
-  body.printing #printArea.tt-print .tt-big .tt-entry { font-size: 8px; padding: 1px 3px; margin-bottom: 2px; line-height: 1.2; }
-  body.printing #printArea.tt-print .tt-big .tt-l2 { font-size: 7px; }
-  body.printing #printArea.tt-print .tt-yr { font-size: 7px; padding: 0 4px; margin-left: 4px; }
-  .tt-yr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body.printing #printArea.tt-print .tt-big .tt-chip { font-size: 6.5px; padding: 0 3px; }
-  body.printing #printArea.tt-print .tt-big .tt-chips { gap: 2px; margin-top: 1px; }
-  /* read-only accounts: printing the page produces nothing */
+  body.printing #printArea.tt-print .tt-head { border-bottom: 2px solid #000; padding-bottom: 2mm; }
+  body.printing #printArea.tt-print .tt-head h2 { font-size: 20px; color: #000; }
+  body.printing #printArea.tt-print .tt-head p, body.printing #printArea.tt-print .tt-meta { color: #333; font-size: 11px; }
+  body.printing #printArea.tt-print .tt-week h3 { display: none; }
+  body.printing #printArea.tt-print .tt { height: 250mm; border: 1.5px solid #000; }
+  body.printing #printArea.tt-print .tt tr { break-inside: avoid; }
+  body.printing #printArea.tt-print .tt tbody tr { height: calc(236mm / var(--rows, 6)); }      /* equal period rows that together fill the page */
+  body.printing #printArea.tt-print .tt th { background: #e6e6e6; color: #000; border: 1px solid #000; padding: 3mm 1mm; font-size: 12px; }
+  body.printing #printArea.tt-print .tt th.tt-corner, body.printing #printArea.tt-print .tt th.tt-p { width: 15mm; }
+  body.printing #printArea.tt-print .tt th.tt-p { background: #f2f2f2; }
+  body.printing #printArea.tt-print .tt-p small { color: #333; font-size: 8px; }
+  body.printing #printArea.tt-print .tt-p strong { font-size: 18px; }
+  body.printing #printArea.tt-print .tt td { border: 1px solid #555; padding: 1.5mm; background: #fff !important; }
+  body.printing #printArea.tt-print .tt-entry { background: #fff; border: 0; border-left: 2px solid #000; border-radius: 0; color: #000; font-size: 11px; padding: 0 0 0 2mm; margin-bottom: 2mm; line-height: 1.25; }
+  body.printing #printArea.tt-print .tt-l2 { font-size: 9.5px; color: #333; }
+  body.printing #printArea.tt-print .tt-chips { gap: 1mm; margin-top: 0.5mm; }
+  body.printing #printArea.tt-print .tt-chip { background: #fff; color: #000; border: 1px solid #000; font-size: 9px; padding: 0 1.5mm; }
+  body.printing #printArea.tt-print .tt-chip.sh-shared { border-style: dashed; }
+  body.printing #printArea.tt-print .tt-chip.sh-missing { border-style: dotted; text-decoration: line-through; }
+  body.printing #printArea.tt-print .tt-yr { background: #fff; color: #000; border: 1px solid #000; font-size: 8px; padding: 0 1.2mm; margin-left: 1.5mm; }
+  /* whole-school sheets hold many classes per cell: smaller type, rows grow and the table continues on the next page */
+  body.printing #printArea.tt-print .tt-big .tt-entry { font-size: 8.5px; margin-bottom: 1mm; line-height: 1.15; }
+  body.printing #printArea.tt-print .tt-big .tt-l2 { font-size: 7.5px; }
+  body.printing #printArea.tt-print .tt-big .tt-chip { font-size: 7px; padding: 0 1mm; }
+  body.printing #printArea.tt-print .tt-big .tt td { padding: 1mm; }
+  /* Per-resource timetables: spreadsheet-style grid (blue day headers, P1..P5 down the side, class / room / teacher in each cell) */
+  body.printing #printArea.tt-print .tt-plain .tt { border: 0; }
+  body.printing #printArea.tt-print .tt-plain .tt th { background: #dce9f7; color: #000; border: 1px solid #000; font-size: 16px; font-weight: 700; text-transform: none; letter-spacing: 0; padding: 2.5mm 1mm; }
+  body.printing #printArea.tt-print .tt-plain .tt th.tt-corner { background: transparent; border: 0; }
+  body.printing #printArea.tt-print .tt-plain .tt th.tt-p { background: #fff; border: 1px solid #000; text-align: left; vertical-align: bottom; padding: 1.5mm 2mm; }
+  body.printing #printArea.tt-print .tt-plain .tt-pl { font-size: 16px; font-weight: 700; }
+  body.printing #printArea.tt-print .tt-plain .tt td { border: 1px solid #000; padding: 2mm; vertical-align: top; }
+  body.printing #printArea.tt-print .tt-plain .tt-entry { border: 0; padding: 0; margin: 0 0 2.5mm; font-size: 14px; font-weight: 400; line-height: 1.35; }
+  body.printing #printArea.tt-print .tt-plain .tt-entry:last-child { margin-bottom: 0; }
+  body.printing #printArea.tt-print .tt-plain .tt-entry strong { font-weight: 400; }
+  body.printing #printArea.tt-print .tt-plain .tt-l2 { font-size: 14px; color: #000; }
+  /* resources on a plain sheet read as ordinary lines under the lesson (shared ones keep their ✓ ⇄ ✕ symbol) */
+  body.printing #printArea.tt-print .tt-plain .tt-chips { display: block; margin: 0; }
+  body.printing #printArea.tt-print .tt-plain .tt-chip { display: block; border: 0; padding: 0; background: none; font-size: 14px; font-weight: 400; border-radius: 0; }
+  body.printing #printArea.tt-print .tt-plain .tt-chip.sh-missing { text-decoration: line-through; }
+  body.printing #printArea.tt-print .tt-plain .tt-yr { margin-left: 1.5mm; vertical-align: 1px; }
+  /* whole-school and year sheets: many lessons per cell, so smaller type and the table continues onto more pages */
+  body.printing #printArea.tt-print .tt-plain.tt-big .tt th { font-size: 13px; padding: 2mm 1mm; }
+  body.printing #printArea.tt-print .tt-plain.tt-big .tt-pl { font-size: 13px; }
+  body.printing #printArea.tt-print .tt-plain.tt-big .tt td { padding: 1mm 1.5mm; }
+  body.printing #printArea.tt-print .tt-plain.tt-big .tt-entry { font-size: 9.5px; margin-bottom: 1.2mm; line-height: 1.2; }
+  body.printing #printArea.tt-print .tt-plain.tt-big .tt-l2, body.printing #printArea.tt-print .tt-plain.tt-big .tt-chip { font-size: 9px; }
+  .tt th, .tt td, .tt-entry, .tt-chip, .tt th.tt-p, .tt-yr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }  /* read-only accounts: printing the page produces nothing */
   body.no-print #root, body.no-print #printArea, body.no-print .overlay { display: none !important; }
   body.no-print::before { content: "Printing is turned off for this account."; display: block; padding: 24px; font: 16px sans-serif; }
   body.printing #root, body.printing #toasts, body.printing .overlay { display: none !important; }
@@ -607,4 +636,8 @@ body.armed .card.can-drop { cursor: copy; }
   .tb-search { width: 100% !important; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-
+.ok-ink { color: var(--ok); font-weight: 600; }
+.tt-note { display: block; margin-top: 3px; font-size: 10.5px; font-weight: 600; line-height: 1.25; color: var(--muted); }
+.tt-chip.sh-holder { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.tt-chip.sh-shared { background: var(--shared-soft); color: var(--shared-ink); border-color: var(--shared); }
+.tt-chip.sh-missing { background: var(--orange-soft); color: var(--orange-ink); border-color: var(--orange); }

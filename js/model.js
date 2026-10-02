@@ -5,7 +5,7 @@
   const C = ER.crypto, S = ER.store, U = ER.util, A = ER.auth;
 
   const CLASS_DIR = 'Class_Data', RES_DIR = 'Resource_Data', ALLOC_DIR = 'Allocation_Data';
-  const RULE_DIR = 'Rule_Data', RUN_DIR = 'Run_Data', SHARED_DIR = 'Shared_Data';
+  const RULE_DIR = 'Rule_Data', RUN_DIR = 'Run_Data', SHARED_DIR = 'Shared_Data', PREF_DIR = 'Preference_Data';
   const CLASS_FILE = 'classes.edr';
 
   // ---------- raw state (what is on disk) ----------
@@ -15,6 +15,7 @@
   const ruleFiles = new Map();   // auto-allocate rules: file name -> { stamp, data }
   const runFiles = new Map();    // auto-allocate run history: file name -> { stamp, data }
   const sharedFiles = new Map(); // shared-resource set-ups (groups + priorities): file name -> { stamp, data }
+  const prefFiles = new Map();   // teachers' usual resources: file name -> { stamp, data }
 
   M.classes = [];
   M.classMeta = null;
@@ -31,11 +32,12 @@
   M.rules = [];                  // saved auto-allocate rules
   M.runs = [];                   // auto-allocate run history (newest first)
   M.shared = [];                 // shared-resource set-ups
+  M.prefs = [];                  // teachers' usual resources, best rank first: { id, teacher, items:[resKey...], rank }
   M.version = 0;                 // bumped whenever the derived data changes (lets other modules cache results)
   M.teachers = []; M.rooms = []; M.years = []; M.faculties = []; M.subjects = []; M.resFaculties = []; M.days = []; M.periods = [];
 
   M.reset = () => {
-    classStamp = null; typeFiles.clear(); allocFiles.clear(); ruleFiles.clear(); runFiles.clear(); sharedFiles.clear();
+    classStamp = null; typeFiles.clear(); allocFiles.clear(); ruleFiles.clear(); runFiles.clear(); sharedFiles.clear(); prefFiles.clear();
     M.classes = []; M.classMeta = null; M.lastSync = null;
     derive();
   };
@@ -68,6 +70,7 @@
     }
     M.version++;
     M.shared = [...sharedFiles.values()].map((f) => f.data);
+    M.prefs = [...prefFiles.values()].map((f) => f.data).sort((a, b) => (Number(a.rank) || 0) - (Number(b.rank) || 0) || U.natCmp(a.teacher, b.teacher));
     M.rules = [...ruleFiles.values()].map((f) => f.data).sort((a, b) => U.natCmp(a.name, b.name));
     M.runs = [...runFiles.values()].map((f) => f.data).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
     M.allocs = [...logical.values()].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : 1));
@@ -145,9 +148,10 @@
   const syncRules = () => syncDir(RULE_DIR, ruleFiles, (stamp, data) => ({ stamp, data }));
   const syncRuns = () => syncDir(RUN_DIR, runFiles, (stamp, data) => ({ stamp, data }));
   const syncShared = () => syncDir(SHARED_DIR, sharedFiles, (stamp, data) => ({ stamp, data }));
+  const syncPrefs = () => syncDir(PREF_DIR, prefFiles, (stamp, data) => ({ stamp, data }));
 
   M.refresh = async () => {
-    const r = await Promise.all([syncClasses(), syncTypes(), syncAllocs(), syncRules(), syncRuns(), syncShared()]);
+    const r = await Promise.all([syncClasses(), syncTypes(), syncAllocs(), syncRules(), syncRuns(), syncShared(), syncPrefs()]);
     M.lastSync = new Date();
     const changed = r.some(Boolean);
     if (changed) derive();
@@ -484,6 +488,22 @@
     need(A.canManageData);
     await S.remove(SHARED_DIR, id + '.edr');
     sharedFiles.delete(id + '.edr');
+    derive();
+  };
+
+  // ---------- teachers' usual resources (honoured first by every auto-allocate run) ----------
+  M.prefOf = (teacher) => M.prefs.find((p) => U.norm(p.teacher) === U.norm(teacher)) || null;
+  M.savePref = async (pref) => {
+    need(A.canManageData);
+    const now = new Date().toISOString();
+    const data = { ...pref, id: pref.id || U.hex(C.rand(8)), updatedAt: now, updatedBy: A.session.user.displayName };
+    await saveJson(PREF_DIR, prefFiles, data);
+    return data;
+  };
+  M.deletePref = async (id) => {
+    need(A.canManageData);
+    await S.remove(PREF_DIR, id + '.edr');
+    prefFiles.delete(id + '.edr');
     derive();
   };
 

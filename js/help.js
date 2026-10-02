@@ -161,11 +161,32 @@
         ]),
         H('Where you see it'),
         UL([
-          '**Shared page → View timetable:** a grid for the resource showing, lesson by lesson, who has it (green), who shares it (blue) and who misses out (red with the reason). Everyone signed in can see it; only admins can change it.',
+          '**Shared page → View timetable:** a grid for the resource showing, lesson by lesson, who has it (green), who shares it (blue) and who misses out (orange, with the reason). Everyone signed in can see it; only admins can change it.',
           '**Allocate grid:** classes in a group show a small marker on their card: “has it”, “shared with …” or “not this lesson (reason)”.',
           '**Reports → Shared resources:** groups and priorities, lessons wanted by more than one class, the staff-to-agree list, missed lessons by group, and free lessons. It can be printed or exported (not by Read-only accounts).',
           '**Auto-allocate** treats lessons where the groups hold the resource as in use, so it never gives the same resource to someone else then.',
         ]),
+      ],
+    },
+    {
+      id: 'prefs', title: 'Teacher preferences (usual resource)',
+      body: () => [
+        P('Some teachers always want the same resource, for example Mr K Mannion with Trolley A. Set it once on the **Preferences** page (admins add and edit; everyone can look) and every **Auto-allocate** run gives it to them **first**.'),
+        H('Setting it up'),
+        OL([
+          '**Add preference**, choose the teacher (from your class data) and their **usual resource**. You can add more than one, in order: the second is used if the first is taken.',
+          'Give each teacher a **rank**. If two teachers want the same resource in the same lesson, **rank 1 beats rank 2**. The page warns you when teachers who share a usual resource are timetabled at the same time.',
+        ]),
+        H('How a run uses it'),
+        UL([
+          'Before the rule’s steps run, each teacher (best rank first) gets their usual resource in every lesson in scope where it is free. The steps then fill whatever is left, so a usual resource counts towards what the step asks for.',
+          'It is a **soft** preference. If the usual resource is taken (by a better-ranked teacher, an earlier booking, a shared-resource group) the teacher simply gets whatever the rule gives them. The preview lists who missed out and why on the **Summary** tab, and marks that lesson “↪ Not their usual resource” on the timetable preview.',
+          'Only resources **in the rule’s pool** are used, so an Art rule never hands out a laptop trolley just because a teacher likes it. A usual resource ignores the rule’s faculty limit.',
+          'A lesson that **already has a resource** keeps it; nothing existing is replaced.',
+          'In the preview, proposed usual resources are marked ★ and “usual resource” on the Changes tab. You can still adjust any lesson by hand, and **Auto-fix** prefers a teacher’s usual resource when it has to pick.',
+          'To switch it off for one rule, untick **Give teachers their usual resource first** in the rule’s faculty section.',
+        ]),
+        NOTE('Preferences are saved encrypted in the data folder (`Preference_Data`) and are shared by everyone.'),
       ],
     },
     {
@@ -215,7 +236,7 @@
       body: () => [
         P('Open **Reports**. Choose a tab, pick what you want to look at, and switch between **List** and **Timetable** layouts.'),
         TABLE(['Report', 'What it shows'], [
-          ['By resource', 'A usage summary (slots used / free, utilisation) for every resource, or every booking for one resource. You can narrow it by type and by the resource’s faculty.'],
+          ['By resource', 'A usage summary (slots used / free, utilisation) for every resource, or every booking for one resource. You can narrow it by type and by the resource’s faculty. A shared resource is marked (shared), and the lessons the Shared page gives its groups (who holds it, who shares it) are counted and listed too. Every other report and timetable includes them as well.'],
           ['By class', 'Every class slot with its room, teacher and resources. Search by name, or show only classes with no resources.'],
           ['By year group', 'All classes in a year group (or every year group) with their resources. Needs year groups on the classes.'],
           ['By subject / faculty', 'Classes in a faculty or subject with their resources, plus a total of which resources those classes use and which faculty owns them. In the timetable layout you get one timetable per subject.'],
@@ -228,7 +249,7 @@
         H('Exporting and printing'),
         UL([
           '**Export CSV** saves the current report as a spreadsheet file.',
-          '**Print** prints the current report. Timetables print landscape on A4, one item per page. Turn on **Background graphics** in the print dialog to keep the colours.',
+          '**Print** prints the current report. Timetables print as a simple spreadsheet-style grid on A4 portrait (blue day headers, P1–P5 down the side, class / room / teacher in each cell), one week per page, stretched to fill the page. A very busy timetable continues onto a second page. Set the browser’s print paper to A4 and margins to Default.',
           '**Allocate → Print timetable…** prints the whole school timetable (or just the current filters) for Week A, Week B or both, with every class, its year group badge (Y9) and its resources. Tick **Start a separate page for each year group** to get one set of pages per year.',
           'Printing is always in light colours, even in dark mode.',
         ]),
@@ -269,6 +290,7 @@
           ['`Allocation_Data`', 'One small file per allocation (encrypted).'],
           ['`Rule_Data`, `Run_Data`', 'Auto-allocate rules and run history (encrypted).'],
           ['`Shared_Data`', 'Shared-resource groups and priorities (encrypted).'],
+          ['`Preference_Data`', 'Teachers’ usual resources and their rank (encrypted).'],
           ['`Login_Data`', 'Password hashes, wrapped keys and the recovery file.'],
         ]),
         H('Sharing through SharePoint / OneDrive'),
@@ -339,7 +361,7 @@
           'Also check **Resources per class** (at least 1) and that the pool boxes use values that exist (a resource’s faculty is set on the resource import, separate from a class’s faculty).',
         ]),
         FAQ('I was signed out.', 'The screen locks after 20 minutes without activity. Sign in again; nothing is lost.'),
-        FAQ('Colours are missing when I print.', 'Turn on **Background graphics** in the browser’s print dialog.'),
+        FAQ('The printed timetable is not filling the page.', 'In the browser’s print dialog choose paper size A4, orientation Portrait (it is set automatically in Edge and Chrome), margins Default and scale 100%.'),
         FAQ('Someone’s change isn’t showing for me.', 'Changes sync about every 20 seconds. Click **Synced** in the top bar to refresh now. If you use OneDrive, check it has finished syncing.'),
       ],
     },

@@ -380,7 +380,7 @@
     const update = () => {
       const list = classesFor();
       const n = list.length;
-      const pages = byYear ? `One landscape page per year group per week` : 'One landscape page per week';
+      const pages = byYear ? `One A4 portrait page per year group per week` : 'One A4 portrait page per week';
       countEl.textContent = `${n} class slot${n === 1 ? '' : 's'} will be printed, with their resources. ${pages} (long ones continue onto more pages).`;
     };
     const body = h('div', { class: 'stack' },

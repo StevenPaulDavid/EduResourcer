@@ -156,6 +156,33 @@
     return out;
   };
 
+  // What the shared resources give one class, for reports: [{ res, group, level, byWeek: { A?, B? } }].
+  // Hand bookings are left out because they are ordinary allocations and already listed as such.
+  SH.forClass = (classKey) => {
+    const out = [];
+    for (const rz of SH.all().values()) {
+      const e = rz.entries.get(classKey);
+      if (!e || !rz.res) continue;
+      const byWeek = {};
+      for (const w of weeksOf(e.c)) if (e.results[w]) byWeek[w] = e.results[w];
+      if (!Object.keys(byWeek).length || Object.values(byWeek).every((r) => r.status === 'holder' && r.via === 'booking')) continue;
+      out.push({ res: rz.res, group: e.group ? e.group.name : '', level: e.level, byWeek });
+    }
+    return out;
+  };
+
+  // plain text for one of the above: "Library Trolley (shared: has it)", "(shared with 9B/Music)", "✕ ... (not this lesson: IT has priority)"
+  SH.describe = (item) => {
+    const one = (r) => (r.status === 'holder' ? 'has it' : r.status === 'shared' ? `shared with ${r.with.join(', ')}` : `✕ not this lesson: ${r.reason}`);
+    const weeks = Object.keys(item.byWeek);
+    const rs = weeks.map((w) => item.byWeek[w]);
+    if (rs.every((r) => r.status === rs[0].status)) {
+      return rs[0].status === 'missing' ? `✕ ${item.res.name} (shared, not this lesson: ${rs[0].reason})`
+        : rs[0].status === 'shared' ? `${item.res.name} (${one(rs[0])})` : `${item.res.name} (shared: ${one(rs[0])})`;
+    }
+    return `${item.res.name} (shared: ${weeks.map((w) => `Wk ${w} ${one(item.byWeek[w])}`).join('; ')})`;
+  };
+
   // slot keys ("Mon|1|A") where a shared resource is held or shared by someone (for auto-allocate to respect)
   SH.heldSlots = (resKey) => {
     const rz = SH.all().get(resKey);

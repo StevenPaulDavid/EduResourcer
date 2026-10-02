@@ -150,7 +150,7 @@
   }
 
   function navItems() {
-    const items = [['allocate', 'Allocate'], ['shared', 'Shared'], ['reports', 'Reports']];
+    const items = [['allocate', 'Allocate'], ['shared', 'Shared'], ['prefs', 'Preferences'], ['reports', 'Reports']];
     if (A.canManageData()) items.push(['auto', 'Auto-allocate']);
     if (A.canManageData()) items.push(['data', 'Data']);
     if (A.isSysAdmin()) items.push(['users', 'Users']);
@@ -194,6 +194,7 @@
     else if (ui.view === 'reports') ER.reports.render(viewEl);
     else if (ui.view === 'auto') ER.autoUi.render(viewEl);
     else if (ui.view === 'shared') ER.sharedUi.render(viewEl);
+    else if (ui.view === 'prefs') ER.prefsUi.render(viewEl);
     else if (ui.view === 'data') ER.admin.renderData(viewEl);
     else if (ui.view === 'users') ER.admin.renderUsers(viewEl);
     else if (ui.view === 'help') ER.help.render(viewEl);
@@ -208,6 +209,7 @@
     else if (ui.view === 'reports') ER.reports.rerun();
     else if (ui.view === 'auto') ER.autoUi.softRefresh();
     else if (ui.view === 'shared') ER.sharedUi.softRefresh();
+    else if (ui.view === 'prefs') ER.prefsUi.softRefresh();
     else if (ui.view === 'data') ER.admin.renderData(viewEl);
     setSync();
   };
@@ -257,6 +259,7 @@
     ER.allocate.resetUi();
     ER.autoUi.reset();
     ER.sharedUi.reset();
+    ER.prefsUi.reset();
     document.getElementById('printArea').innerHTML = '';
     document.querySelectorAll('.overlay').forEach((o) => o.remove());
     document.body.classList.remove('armed', 'dragging', 'no-print', 'printing');

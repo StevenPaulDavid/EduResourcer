@@ -25,6 +25,7 @@
     strictFaculty: false,       // true: shared (no-faculty) items are NOT used as a fallback
     spare: 0,                   // items to keep free in every lesson
     sameItem: true,             // prefer giving a class the same item each lesson
+    usePrefs: true,             // give teachers their usual resource (Preferences page) before the steps run
     steps: [AU.newStep()],
   });
 
@@ -180,8 +181,51 @@
     const why = {};             // classKey -> the reason it could not be fully served
     const stepOf = {};          // classKey -> index of the step that handles it
 
+    // which step handles each lesson (the first one it matches)
+    const stepMembers = rule.steps.map(() => []), stepIdx = new Map(), claimed = new Set();
+    rule.steps.forEach((st, si) => scopeClasses.filter((c) => !claimed.has(c.key) && matchStep(st, c)).forEach((c) => { claimed.add(c.key); stepMembers[si].push(c); stepIdx.set(c.key, si); }));
+
+    // ---- teachers' usual resources: honoured first, best-ranked teacher first, only from this rule's pool.
+    // A usual resource is not subject to the faculty limit; a teacher who cannot have it falls through to the steps.
+    const prefLessons = [];     // [{ classKey, teacher, items:[resKey], reason }]  (reason = why the usual one was not given)
+    if (rule.usePrefs !== false) {
+      const whoHas = (resKey, slots) => {
+        const want = new Set(slots);
+        for (const a of M.allocsByRes.get(resKey) || []) { const oc = M.classByKey.get(a.classKey); if (oc && M.slotsOf(oc).some((s) => want.has(s))) return oc.name + (oc.teacher ? ' (' + oc.teacher + ')' : ''); }
+        for (const p of placements) { if (p.resKey !== resKey) continue; const oc = M.classByKey.get(p.classKey); if (oc && M.slotsOf(oc).some((s) => want.has(s))) return oc.name + (oc.teacher ? ' (' + oc.teacher + ')' : ''); }
+        return ER.shared && ER.shared.heldSlots(resKey).some((s) => want.has(s)) ? 'a shared-resource group' : '';
+      };
+      for (const pref of M.prefs) {
+        const items = (pref.items || []).filter((k) => poolKeys.has(k));       // preferences outside this rule's pool are not this rule's business
+        if (!items.length) continue;
+        const lessons = scopeClasses.filter((c) => stepIdx.has(c.key) && U.norm(c.teacher) === U.norm(pref.teacher)).sort(lessonCmp);
+        for (const c of lessons) {
+          const entry = { classKey: c.key, teacher: pref.teacher, items, reason: '' };
+          prefLessons.push(entry);
+          const mine = hasKeys.get(c.key) || new Set();
+          if (items.some((k) => mine.has(k))) continue;                         // already has its usual resource
+          if (mine.size) { entry.reason = 'the lesson already has another resource, which is kept'; continue; }
+          const slots = M.slotsOf(c);
+          if (rule.spare > 0 && !slots.every((s) => poolItems.length - ((slotUse.get(s) || 0) + 1) >= rule.spare)) { entry.reason = `keeping ${rule.spare} spare free`; continue; }
+          const res = items.find((k) => isFree(M.resByKey.get(k), slots));
+          if (!res) {
+            const by = items.map((k) => { const w = whoHas(k, slots); return w ? `${M.resByKey.get(k).name} is with ${w}` : ''; }).filter(Boolean);
+            entry.reason = by.join('; ') || 'it is in use in that lesson';
+            continue;
+          }
+          addOcc(res, slots);
+          if (!hasKeys.has(c.key)) hasKeys.set(c.key, new Set());
+          hasKeys.get(c.key).add(res);
+          if (!freq.has(c.name)) freq.set(c.name, new Map());
+          bump(freq.get(c.name), res);
+          weeksOf(c).forEach((w) => bump(counters, `${c.name}|${w}`));
+          placements.push({ resKey: res, classKey: c.key, step: stepIdx.get(c.key), pref: true });
+        }
+      }
+    }
+
     rule.steps.forEach((st, si) => {
-      const members = scopeClasses.filter((c) => !assigned.has(c.key) && matchStep(st, c)).sort(lessonCmp);
+      const members = stepMembers[si].slice().sort(lessonCmp);
       members.forEach((c) => { assigned.add(c.key); stepOf[c.key] = si; });
       const stat = { name: AU.stepName(st, si), lessons: members.length, alreadyOk: 0, served: 0, partial: 0, unmet: 0, placed: 0 };
       const wanted = st.all ? Infinity : Math.max(1, Number(st.qty) || 1);
@@ -219,7 +263,7 @@
 
     const capacity = poolItems.length * totalSlots;
     const plan = {
-      rule, placements, unmet, steps: stepStats, demand, why, stepOf, edits: 0, removed: [],
+      rule, placements, unmet, steps: stepStats, demand, why, stepOf, edits: 0, removed: [], prefLessons,
       scopeLessons: scopeClasses.length,
       scopeKeys: scopeClasses.map((c) => c.key),
       // what values actually occur in the lessons in scope (used to explain a step that matches nothing)
@@ -364,6 +408,18 @@
     return { red, orange: orangeShort + outside, orangeShort, outside };
   };
 
+  // Teachers' usual resources, live: which lessons have one of their teacher's usual resources (existing, kept or proposed)
+  // and which do not, with the reason recorded when the plan was made.
+  AU.prefTally = (plan) => {
+    const got = [], missed = [];
+    for (const e of plan.prefLessons || []) {
+      const have = new Set([...plan.placements.filter((p) => p.classKey === e.classKey).map((p) => p.resKey), ...keptExisting(plan, e.classKey).map((x) => x.res.key)]);
+      const hit = e.items.find((k) => have.has(k));
+      if (hit) got.push({ ...e, hit }); else missed.push({ ...e, reason: e.reason || 'it was taken off in this preview' });
+    }
+    return { got, missed };
+  };
+
   // stage the removal of an allocation that already exists (applied when you press Apply)
   AU.removeExisting = (plan, resKey, classKey) => {
     const a = M.allocById.get(resKey + '||' + classKey);
@@ -456,10 +512,12 @@
       const need = (dem && dem.wanted !== 'all' ? dem.wanted : 1) - gotNow;
       for (let i = 0; i < need; i++) {
         const f = freq.get(c.name);
+        const pref = M.prefOf(c.teacher);
+        const prefIdx = (r) => { const i = pref ? pref.items.indexOf(r.key) : -1; return i < 0 ? 99 : i; };
         const rank = (r) => (!o.preferFaculty ? 0 : c.faculty && r.faculty === c.faculty ? 0 : !r.faculty ? 1 : 2);
         const cands = AU.freeResources(plan, classKey)
           .filter((x) => typeOk(x.res) && (!o.facultyOnly || !x.res.faculty || x.res.faculty === c.faculty))
-          .sort((a, b) => (b.inPool - a.inPool) || (((f && f.get(b.res.key)) || 0) - ((f && f.get(a.res.key)) || 0)) || rank(a.res) - rank(b.res)
+          .sort((a, b) => (b.inPool - a.inPool) || (prefIdx(a.res) - prefIdx(b.res)) || (((f && f.get(b.res.key)) || 0) - ((f && f.get(a.res.key)) || 0)) || rank(a.res) - rank(b.res)
             || U.natCmp(a.res.typeName, b.res.typeName) || U.natCmp(a.res.name, b.res.name));
         if (!cands.length) break;
         const best = cands[0];
@@ -577,7 +635,8 @@
     }
     const by = `${A.session.user.displayName} (auto: ${plan.rule.name})`;
     const byManual = `${A.session.user.displayName} (auto: ${plan.rule.name}, added by hand)`;
-    await M.bulkAllocate(accepted.map((p) => ({ resKey: p.resKey, classKey: p.classKey, by: p.manual ? byManual : by })), by, onProgress);
+    const byPref = `${A.session.user.displayName} (auto: ${plan.rule.name}, usual resource)`;
+    await M.bulkAllocate(accepted.map((p) => ({ resKey: p.resKey, classKey: p.classKey, by: p.manual ? byManual : p.pref ? byPref : by })), by, onProgress);
     const run = {
       id: U.hex(C.rand(8)), ruleId: plan.rule.id, ruleName: plan.rule.name, by: A.session.user.displayName, at: new Date().toISOString(),
       placements: accepted.map((p) => ({ r: p.resKey, c: p.classKey, s: p.step, m: p.manual ? 1 : 0 })), skipped, manual: accepted.filter((p) => p.manual).length,

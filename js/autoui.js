@@ -306,7 +306,9 @@
       h('label', { class: 'check' }, strict, 'Strictly the faculty’s own items: don’t use shared items that have no faculty as a fallback'),
       h('div', { class: 'form-grid' },
         field('Keep spare', numInput(d.spare, (v) => { d.spare = v; }), 'Resources to leave free in the bank in every lesson (0 = none).'),
-        h('label', { class: 'check', style: { alignSelf: 'end' } }, h('input', { type: 'checkbox', checked: d.sameItem, onchange: (e) => { d.sameItem = e.target.checked; } }), 'Prefer giving a class the same item every lesson')));
+        h('label', { class: 'check', style: { alignSelf: 'end' } }, h('input', { type: 'checkbox', checked: d.sameItem, onchange: (e) => { d.sameItem = e.target.checked; } }), 'Prefer giving a class the same item every lesson'),
+        h('label', { class: 'check', style: { alignSelf: 'end' } }, h('input', { type: 'checkbox', checked: d.usePrefs !== false, onchange: (e) => { d.usePrefs = e.target.checked; } }),
+          'Give teachers their usual resource first (see Preferences). Only resources in the pool above are used.')));
 
     // --- steps
     const stepsHost = h('div', { class: 'steps' });
@@ -422,12 +424,21 @@
         if (had) bits.push(`${had} lesson${had > 1 ? 's' : ''} already have what the step asks for`);
         notes.push(['warn', 'Nothing would be allocated. ' + (bits.length ? 'Reasons: ' + bits.join('; ') + '.' : 'No lesson in scope is matched by a step (see above).')]);
       }
+      const pt = AU.prefTally(plan);
+      const prefBlock = plan.prefLessons && plan.prefLessons.length ? h('div', { class: 'stack' },
+        h('h3', { class: 'sec' }, `Teachers’ usual resources: ${pt.got.length} of ${plan.prefLessons.length} lesson${plan.prefLessons.length === 1 ? '' : 's'} get${plan.prefLessons.length === 1 ? 's' : ''} the usual one`),
+        pt.missed.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
+          h('thead', null, h('tr', null, ['Teacher', 'Class', 'Lesson', 'Usual resource', 'Why not'].map((c) => h('th', null, c)))),
+          h('tbody', null, pt.missed.slice(0, 300).map((m) => { const c = cls(m.classKey);
+            return h('tr', null, h('td', null, m.teacher), h('td', null, c.name), h('td', null, lessonLabel(c)), h('td', null, m.items.map((k) => resOf(k).name).join(' / ')), h('td', null, m.reason)); }))))
+          : h('p', { class: 'muted' }, 'Every teacher with a usual resource keeps it in every lesson in scope.')) : null;
       body = h('div', { class: 'stack' },
         ...notes.map(([kind, text]) => h('p', { class: 'callout' + (kind ? ' ' + kind : '') }, text)),
         h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-          h('thead', null, h('tr', null, ['Step', 'Lessons', 'Allocated', 'Fully served', 'Part-served', 'Nothing free', 'Already had it'].map((c) => h('th', null, c)))),
+          h('thead', null, h('tr', null, ['Step', 'Lessons', 'Allocated', 'Fully served', 'Part-served', 'Nothing free', 'Already covered'].map((c) => h('th', { title: c === 'Already covered' ? 'Lessons that already had what the step asks for, or were given their teacher’s usual resource' : null }, c)))),
           h('tbody', null, plan.steps.map((s) => h('tr', null, h('td', null, s.name), h('td', null, String(s.lessons)), h('td', null, h('strong', null, String(s.placed))),
             h('td', null, String(s.served)), h('td', null, String(s.partial)), h('td', null, String(s.unmet)), h('td', null, String(s.alreadyOk))))))),
+        prefBlock,
         h('p', { class: 'muted' }, `Pool: ${plan.poolSize} resource(s). Their lesson-slots in use go from ${pct(plan.usedBefore, plan.capacity)} to ${pct(plan.usedAfter, plan.capacity)}; the rest stays in the bank.`));
     } else if (S.tab === 'changes') {
       const rows = plan.placements.slice().sort((a, b) => a.step - b.step || lessonCmpC(cls(a.classKey), cls(b.classKey)));
@@ -436,7 +447,7 @@
         h('tbody', null, rows.slice(0, 600).map((p) => {
           const c = cls(p.classKey), r = resOf(p.resKey), inPool = plan.poolKeys.includes(p.resKey);
           return h('tr', null, h('td', null, p.step < 0 ? 'Manual' : String(p.step + 1)), h('td', null, c.name), h('td', null, c.year || ''), h('td', null, lessonLabel(c)), h('td', null, c.teacher), h('td', null, r.name),
-            h('td', null, p.manual ? h('span', { class: 'pill' }, inPool ? 'added by you' : 'added by you, outside pool') : null));
+            h('td', null, p.manual ? h('span', { class: 'pill' }, inPool ? 'added by you' : 'added by you, outside pool') : p.pref ? h('span', { class: 'pill' }, 'usual resource') : null));
         }))))
         : h('p', { class: 'empty-note' }, 'This rule would not allocate anything.');
       if (rows.length > 600) body = h('div', null, body, h('p', { class: 'muted' }, `Showing the first 600 of ${rows.length}.`));
@@ -579,6 +590,16 @@
     else if ((plan.unassignedKeys || []).includes(classKey)) status = h('p', { class: 'callout' }, 'No step covers this lesson, so the rule leaves it alone. You can still add a resource by hand below.');
     else status = h('p', { class: 'callout' }, 'This lesson already has what its step asks for.');
 
+    // the teacher's usual resource, if this lesson's teacher has one that applies to this rule
+    let prefNote = null;
+    const pe = (plan.prefLessons || []).find((e) => e.classKey === classKey);
+    if (pe) {
+      const tl = AU.prefTally(plan), names = pe.items.map((k) => M.resByKey.get(k).name).join(' / ');
+      const hit = tl.got.find((e) => e.classKey === classKey), miss = tl.missed.find((e) => e.classKey === classKey);
+      prefNote = hit ? h('p', { class: 'callout' }, `${pe.teacher}’s usual resource (${names}): this lesson has ${M.resByKey.get(hit.hit).name}.`)
+        : h('p', { class: 'callout warn' }, `${pe.teacher}’s usual resource (${names}) is not on this lesson: ${miss.reason}. You can give it by hand below or take it from the lesson that has it.`);
+    }
+
     // what it has / will have. Existing allocations can be removed here: that is staged, and only happens when you Apply.
     const existing = M.resourcesOfClass(classKey).filter((x) => x.res);
     const haveList = h('div', { class: 'lesson-chips' },
@@ -591,7 +612,7 @@
             : h('button', { class: 'btn danger-ghost small', type: 'button', title: 'Removed when you press Apply (and put back if you undo the run)', onclick: () => { AU.removeExisting(plan, res.key, classKey); after(); } }, 'Remove'));
       }),
       ...mine.map((p) => { const r = M.resByKey.get(p.resKey); return h('span', { class: 'lesson-item' }, tag(r, p.manual ? ' ✎' : ''),
-        h('span', { class: 'muted small' }, p.manual ? (poolSet.has(p.resKey) ? 'added by you' : 'added by you, outside the pool') : 'proposed'),
+        h('span', { class: 'muted small' }, p.manual ? (poolSet.has(p.resKey) ? 'added by you' : 'added by you, outside the pool') : p.pref ? 'proposed: the teacher’s usual resource' : 'proposed'),
         h('button', { class: 'btn danger-ghost small', type: 'button', onclick: () => { AU.removePlacement(plan, p.resKey, classKey); after(); } }, 'Remove')); }));
     const none = !existing.length && !mine.length;
 
@@ -646,7 +667,7 @@
     return h('div', { class: 'stack' },
       h('div', null, h('h3', null, c.name, c.year ? h('span', { class: 'tt-yr' }, U.yearShort(c.year)) : null),
         h('p', { class: 'muted' }, [lessonLabel(c), c.teacher, c.room ? '⌂ ' + c.room : ''].filter(Boolean).join('  ·  '))),
-      status,
+      status, prefNote,
       h('div', null, h('h3', { class: 'sec' }, 'Resources on this lesson'), none ? h('p', { class: 'muted' }, 'None yet.') : haveList),
       holders.length ? h('details', { class: 'faq', open: !!pr }, h('summary', null, `What is using the pool in this lesson (${holders.length})`),
         h('div', { class: 'faq-a' }, h('p', { class: 'muted small' }, 'Items proposed by this run can be moved to this lesson. For an item that is already allocated, “Take it” removes it from that class when you apply. Either way the class that loses one will then show as short.'), holdTable)) : null,
@@ -685,14 +706,15 @@
       return u.got ? `${u.got} of ${u.wanted} only` : 'Nothing free';
     };
     const skipped = new Set(plan.unassignedKeys || []);
-    const chip = (r, ghost, manual, removed) => h('span', { class: 'tt-chip' + (ghost ? ' ghost' : '') + (manual ? ' manual' : '') + (removed ? ' removed' : ''), title: removed ? 'Will be removed when you apply' : null, dataset: { t: String(M.typeColour(r.typeId)) } }, h('span', { class: 'chip-dot' }), (removed ? '✕ ' : manual ? '✎ ' : ghost ? '+ ' : '✓ ') + r.name);
+    const notUsual = new Set(AU.prefTally(plan).missed.map((m) => m.classKey));      // teacher did not get their usual resource
+    const chip = (r, ghost, manual, removed, pref) => h('span', { class: 'tt-chip' + (ghost ? ' ghost' : '') + (manual ? ' manual' : '') + (removed ? ' removed' : ''), title: removed ? 'Will be removed when you apply' : null, dataset: { t: String(M.typeColour(r.typeId)) } }, h('span', { class: 'chip-dot' }), (removed ? '✕ ' : manual ? '✎ ' : pref ? '★ ' : ghost ? '+ ' : '✓ ') + r.name);
     const rows = M.periods.map((p) => h('tr', null, h('th', { class: 'tt-p', scope: 'row' }, h('small', null, 'Period'), h('strong', null, p.label)),
       M.days.map((d) => {
         const list = (cells.get(d + '|' + p.pkey) || []).sort((a, b) => U.natCmp(a.name, b.name));
         return h('td', { class: 'tt-cell' + (list.length ? ' has' : '') }, list.map((c) => {
           // everything the class already has is shown, whether or not it is one of the rule's pool resources
           const have = M.resourcesOfClass(c.key).filter((x) => x.res).map((x) => chip(x.res, false, false, AU.isRemoved(plan, x.res.key, c.key)));
-          const add = (proposed.get(c.key) || []).map((pl) => chip(M.resByKey.get(pl.resKey), true, pl.manual));
+          const add = (proposed.get(c.key) || []).map((pl) => chip(M.resByKey.get(pl.resKey), true, pl.manual, false, pl.pref));
           const cl = AU.classify(plan, c.key);
           const pr = cl.u;
           // red = the lesson would have nothing at all; orange = it has a resource but is short of what the step asks,
@@ -713,7 +735,8 @@
             h('div', { class: 'tt-chips' }, [...have, ...add]),
             state === 'unmet' ? h('span', { class: 'tt-why' }, '✕ ' + shortWhy(pr))
               : state === 'partial' ? h('span', { class: 'tt-why' }, '! ' + (cl.kind === 'outside' ? `Outside pool: ${outNames[0]}${outNames.length > 1 ? ` +${outNames.length - 1}` : ''}`
-                : hadNames.length ? `Has ${hadNames[0]}${hadNames.length > 1 ? ` +${hadNames.length - 1}` : ''}, rule added none` : shortWhy(pr))) : null);
+                : hadNames.length ? `Has ${hadNames[0]}${hadNames.length > 1 ? ` +${hadNames.length - 1}` : ''}, rule added none` : shortWhy(pr))) : null,
+            notUsual.has(c.key) ? h('span', { class: 'tt-note' }, '↪ Not their usual resource') : null);
         }));
       })));
     const tally = AU.tally(plan), nUnmet = tally.red, nPartial = tally.orange;
@@ -722,7 +745,7 @@
       h('span', { class: 'lg unmet' }, `Red: would have no resource at all (${nUnmet})`),
       nPartial ? h('span', { class: 'lg partial' }, `Orange: short of the rule, or covered from outside the pool (${nPartial})`) : null,
       plan.unassigned ? h('span', { class: 'lg skipped' }, `Faded: not covered by any step (${plan.unassigned})`) : null,
-      h('span', { class: 'muted small' }, 'Dashed tags are proposed (✎ = added by you); solid tags are already allocated (✕ = will be removed). Click any lesson to see what is blocking it and adjust it.'));
+      h('span', { class: 'muted small' }, 'Dashed tags are proposed (✎ = added by you, ★ = the teacher’s usual resource); solid tags are already allocated (✕ = will be removed). Click any lesson to see what is blocking it and adjust it.'));
     const seg = h('div', { class: 'seg' }, ['A', 'B'].map((w) => h('button', { class: 'seg-btn' + (S.week === w ? ' on' : ''), type: 'button', onclick: () => { S.week = w; renderPreview(); } }, 'Week ' + w)));
     return h('div', { class: 'stack' }, h('div', { class: 'inline' }, seg), legend,
       h('div', { class: 'tt-wrap pv' }, h('table', { class: 'tt' }, h('thead', null, h('tr', null, h('th', { class: 'tt-corner' }, ''), M.days.map((d) => h('th', null, d)))), h('tbody', null, rows))));

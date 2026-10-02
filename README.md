@@ -62,6 +62,12 @@ per browser, and printing is always in light colours.
   levels = shared, staff agree). Who has it in each lesson is worked out live from the timetable: best priority has it,
   others are flagged as missing out, equal levels show as shared, and a hand booking wins the lesson. There is a
   per-lesson timetable per resource, markers on the Allocate grid, and a separate printable/exportable report.
+- **Teacher preferences** (admins set up, everyone sees): on the **Preferences** page, give a teacher a usual resource
+  (or an ordered list), such as Mr K always having Trolley A, plus a rank. Every Auto-allocate run gives these out
+  **first**, best rank first, then the rule's steps fill the rest. It is soft: a teacher whose resource is taken gets
+  whatever the rule gives them and the preview lists who missed out and why (marked "Not their usual resource").
+  Only resources in the rule's pool are used, existing allocations are kept, and each rule can switch it off.
+- **Shared resources in reports:** every report (by resource, class, teacher, room, year, subject, timetables and the free-resources finder) includes lessons a shared resource gives its groups, not just hand bookings. In lists they read "(shared: has it)", "(shared with 9B/Music)" or "✕ … not this lesson"; on timetables they are green ✓, blue ⇄ and orange ✕ tags.
 - **Clear allocations** (same admins): bulk-remove allocations by class (year, faculty, subject, teacher, room,
   named classes, day, period, week type), by resource (type, faculty, item) and by who made them (auto or hand).
   A live count and list show exactly what will go, clearing everything needs you to type CLEAR, and every clear can be
@@ -75,7 +81,7 @@ per browser, and printing is always in light colours.
 - **Reports**: by resource, class, room, teacher, plus a free-resources finder. Each has a **List** or **Timetable**
   layout. Timetable layouts show Period × Day grids for Week A and Week B, with resources as coloured tags.
   Choosing "All rooms/teachers/classes" (or all resources with bookings) makes one timetable per item. **Print**
-  puts each on its own landscape A4 page (turn on "Background graphics" in the print dialog to keep the colours).
+  puts each week of each item on its own A4 portrait page: a simple black-and-white grid stretched to fill the page (shared resources keep their symbols ✓ ⇄ ✕). Every timetable print uses the same spreadsheet-style layout: blue day headers, P1–P5 down the side, and class / room / teacher (then resources) in each cell. Whole-school and year-group sheets put room and teacher on one line to fit more classes.
   Every report also exports to CSV.
 - The screen auto-locks after 20 minutes idle and syncs other people's changes every 20 seconds (click "Synced" to refresh).
 
@@ -86,6 +92,7 @@ Class_Data/        classes.edr                 (encrypted)
 Resource_Data/     one file per resource type  (encrypted, opaque names)
 Allocation_Data/   one file per allocation     (encrypted, opaque names)
 Shared_Data/       shared-resource groups      (encrypted)
+Preference_Data/   teachers' usual resources   (encrypted)
 Rule_Data/         auto-allocate rules         (encrypted)
 Run_Data/          auto-allocate run history   (encrypted)
 Login_Data/        password hashes + wrapped keys, recovery file

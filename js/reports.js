@@ -23,7 +23,25 @@
   const weekLabel = (w) => (w === 'AB' ? 'A+B' : w);
   const slotCmp = (a, b) =>
     U.DAYS.indexOf(a.day) - U.DAYS.indexOf(b.day) || U.natCmp(a.pkey, b.pkey) || U.natCmp(a.week, b.week);
-  const resNames = (c) => M.resourcesOfClass(c.key).filter((x) => x.res).map((x) => x.res.name).join(', ');
+  // what shared resources give a class (live from the Shared page set-up); hand bookings are ordinary allocations
+  const sharedOf = (c) => ER.shared.forClass(c.key);
+  const resNames = (c) => [...M.resourcesOfClass(c.key).filter((x) => x.res).map((x) => x.res.name), ...sharedOf(c).map(ER.shared.describe)].join(', ');
+  // does the class have any resource at all: booked, or held / shared through a shared resource?
+  const hasRes = (c) => (M.allocsByClass.get(c.key) || []).length > 0 || sharedOf(c).some((i) => Object.values(i.byWeek).some((r) => r.status !== 'missing'));
+  // lessons of a shared resource that a class holds or shares, as { week-label, weeks:[...], status, text } (missing lessons are left out)
+  function sharedLessons(rz) {
+    const out = [];
+    for (const e of rz.entries.values()) {
+      if (e.booked) continue;                                    // booked classes are listed as ordinary allocations
+      const weeks = (e.c.week === 'AB' ? ['A', 'B'] : [e.c.week]).filter((w) => e.results[w] && e.results[w].status !== 'missing');
+      if (!weeks.length) continue;
+      const text = (r) => (r.status === 'holder' ? `Shared: ${e.group.name} (priority ${e.level})` : `Shared with ${r.with.join(', ')}: staff to agree`);
+      const same = weeks.every((w) => e.results[w].status === e.results[weeks[0]].status);
+      if (same) out.push({ c: e.c, weeks, label: weeks.length === 2 ? 'A+B' : weeks[0], text: text(e.results[weeks[0]]) });
+      else weeks.forEach((w) => out.push({ c: e.c, weeks: [w], label: w, text: text(e.results[w]) }));
+    }
+    return out;
+  }
 
   // ---------- report builders: each returns { title, sections:[{title?, columns, rows, flag?}] } ----------
   function resourceReport() {
@@ -34,20 +52,24 @@
     if (state.res) {
       const r = M.resByKey.get(state.res);
       if (!r) return { title: 'Resource usage', sections: [] };
-      const rows = (M.allocsByRes.get(r.key) || [])
-        .map((a) => ({ a, c: M.classByKey.get(a.classKey) })).filter((x) => x.c)
-        .sort((x, y) => slotCmp(x.c, y.c))
-        .map(({ a, c }) => [c.day, c.period, weekLabel(c.week), c.name, c.room, c.teacher, a.by || '']);
+      const rz = ER.shared.all().get(r.key);
+      const sh = rz ? sharedLessons(rz) : [];
+      const rows = [
+        ...(M.allocsByRes.get(r.key) || []).map((a) => ({ a, c: M.classByKey.get(a.classKey) })).filter((x) => x.c)
+          .map(({ a, c }) => ({ c, row: [c.day, c.period, weekLabel(c.week), c.name, c.room, c.teacher, a.by || ''] })),
+        ...sh.map((s) => ({ c: { ...s.c, week: s.weeks[0] }, row: [s.c.day, s.c.period, s.label, s.c.name, s.c.room, s.c.teacher, s.text] })),
+      ].sort((x, y) => slotCmp(x.c, y.c)).map((x) => x.row);
       return {
         title: `${r.name} (${r.typeName})`,
-        subtitle: `${rows.length} allocation(s)` + (r.faculty ? ` · ${r.faculty}` : '') + (r.location ? ` · stored in ${r.location}` : ''),
+        subtitle: `${rows.length - sh.length} allocation(s)` + (rz ? ` + ${sh.length} shared lesson(s), worked out from the priorities on the Shared page` : '') + (r.faculty ? ` · ${r.faculty}` : '') + (r.location ? ` · stored in ${r.location}` : ''),
         sections: [{ columns: ['Day', 'Period', 'Week', 'Class', 'Room', 'Teacher', 'Allocated by'], rows }],
       };
     }
     const rows = items.map((r) => {
       const slots = new Set();
       for (const a of M.allocsByRes.get(r.key) || []) { const c = M.classByKey.get(a.classKey); if (c) M.slotsOf(c).forEach((s) => slots.add(s)); }
-      const row = [r.name, r.typeName, r.faculty, r.location, String(slots.size), String(Math.max(0, total - slots.size)), Math.round((slots.size / total) * 100) + '%'];
+      ER.shared.heldSlots(r.key).forEach((s) => slots.add(s));       // lessons held or shared through the Shared page
+      const row = [r.name + (ER.shared.all().has(r.key) ? ' (shared)' : ''), r.typeName, r.faculty, r.location, String(slots.size), String(Math.max(0, total - slots.size)), Math.round((slots.size / total) * 100) + '%'];
       return M.resFaculties.length ? row : row.filter((_, i) => i !== 2);
     });
     const cols = ['Resource', 'Type', 'Faculty', 'Location', 'Slots used', 'Slots free', 'Utilisation'].filter((c) => c !== 'Faculty' || M.resFaculties.length);
@@ -72,7 +94,7 @@
     if (by === 'class') {
       const q = U.norm(state.q);
       if (q) list = list.filter((c) => U.norm(c.name).includes(q));
-      if (state.noRes) list = list.filter((c) => !(M.allocsByClass.get(c.key) || []).length);
+      if (state.noRes) list = list.filter((c) => !hasRes(c));
     }
     const yearCmp = (a, b) => (a.year ? 0 : 1) - (b.year ? 0 : 1) || U.yearCmp(a.year || '', b.year || '');
     const sorter = by === 'room' ? (a, b) => U.natCmp(a.room, b.room) || slotCmp(a, b)
@@ -102,6 +124,13 @@
         const u = use.get(res.key) || { res, slots: 0, classes: 0 };
         u.slots += M.slotsOf(c).length; u.classes++;
         use.set(res.key, u);
+      }
+      for (const c of list) for (const it of sharedOf(c)) {          // shared resources the classes hold or share
+        const n = Object.values(it.byWeek).filter((r) => r.status !== 'missing').length;
+        if (!n) continue;
+        const u = use.get(it.res.key) || { res: it.res, slots: 0, classes: 0 };
+        u.slots += n; u.classes++;
+        use.set(it.res.key, u);
       }
       const rrows = [...use.values()].sort((a, b) => b.slots - a.slots || U.natCmp(a.res.name, b.res.name))
         .map(({ res, slots, classes }) => [res.name, res.typeName, res.faculty || '', String(classes), String(slots)]);
@@ -166,13 +195,15 @@
       const c = M.classByKey.get(a.classKey);
       if (c && M.slotsOf(c).includes(slot)) occupied.add(a.resKey);
     }
+    for (const cfg of M.shared) if (ER.shared.heldSlots(cfg.resKey).includes(slot)) occupied.add(cfg.resKey);   // held or shared by a group
     const free = [...M.resByKey.values()].filter((r) => (!state.fType || r.typeId === state.fType) && (!state.fFaculty || r.faculty === state.fFaculty) && !occupied.has(r.key))
       .sort((a, b) => U.natCmp(a.typeName, b.typeName) || U.natCmp(a.name, b.name))
       .map((r) => (M.resFaculties.length ? [r.name, r.typeName, r.faculty, r.location] : [r.name, r.typeName, r.location]));
     const inSlot = M.classes.filter((c) => M.slotsOf(c).includes(slot));
     const classRows = inSlot.map((c) => {
       const mine = M.resourcesOfClass(c.key).filter((x) => x.res && (!state.fType || x.res.typeId === state.fType));
-      return { c, text: mine.map((x) => x.res.name).join(', ') };
+      const sh = sharedOf(c).filter((i) => !state.fType || i.res.typeId === state.fType);
+      return { c, text: [...mine.map((x) => x.res.name), ...sh.map(ER.shared.describe)].join(', ') };
     }).sort((a, b) => (a.text ? 1 : 0) - (b.text ? 1 : 0) || U.natCmp(a.c.name, b.c.name))
       .map(({ c, text }) => [c.name, c.room, c.teacher, text || '— none —']);
     const p = M.periods.find((x) => x.pkey === state.fPeriod);
@@ -193,12 +224,13 @@
   function makeSheet(title, subtitle, classes, mode) {
     const items = classes.map((c) => {
       const res = M.resourcesOfClass(c.key).map((x) => x.res).filter(Boolean);
-      if (mode === 'resource') return { c, l1: c.name, l2: [c.room, c.teacher].filter(Boolean).join(' · '), res: [] };
-      if (mode === 'room') return { c, l1: c.name, l2: c.teacher, res };
-      if (mode === 'teacher') return { c, l1: c.name, l2: c.room, res };
-      return { c, l1: c.name, l2: [c.room, c.teacher].filter(Boolean).join(' · '), res };
+      const shared = sharedOf(c);       // shown per week: green = has it, blue = shared, orange = misses out
+      // lines under the class name when printed: what the sheet is NOT already about (a room's sheet has no room line, ...)
+      const lines = (mode === 'room' ? [c.teacher] : mode === 'teacher' ? [c.room] : [c.room, c.teacher]).filter(Boolean);
+      if (mode === 'resource') return { c, l1: c.name, l2: [c.room, c.teacher].filter(Boolean).join(' · '), lines, res: [], shared: [] };
+      return { c, l1: c.name, l2: lines.join(' · '), lines, res, shared };
     });
-    return { title, subtitle, items };
+    return { title, subtitle, items, plain: true };
   }
 
   function timetableReport() {
@@ -210,8 +242,15 @@
         .sort((a, b) => U.natCmp(a.typeName, b.typeName) || U.natCmp(a.name, b.name));
       for (const r of list) {
         const classes = (M.allocsByRes.get(r.key) || []).map((a) => M.classByKey.get(a.classKey)).filter(Boolean);
-        if (!state.res && !classes.length) continue;
-        sheets.push(makeSheet(r.name, r.typeName + (r.location ? ' · ' + r.location : ''), classes, 'resource'));
+        const rz = ER.shared.all().get(r.key);
+        const sh = rz ? sharedLessons(rz) : [];
+        if (!state.res && !classes.length && !sh.length) continue;
+        const sheet = makeSheet(r.name, r.typeName + (r.location ? ' · ' : '') + (r.location || '') + (rz ? ' · shared resource' : ''), classes, 'resource');
+        // lessons a shared resource gives its groups: only in the weeks where the class holds or shares it
+        for (const s of sh) sheet.items.push({ c: s.c, l1: s.c.name, l2: [s.c.room, s.c.teacher].filter(Boolean).join(' · '), res: [], shared: [], weeks: s.weeks, note: s.text });
+        sheet.plain = true; sheet.hideYear = true;           // prints in the simple spreadsheet-style layout
+        sheet.items.forEach((it) => { it.lines = [it.c.room, it.c.teacher].filter(Boolean); });
+        sheets.push(sheet);
       }
       title = state.res && sheets[0] ? `${sheets[0].title} — timetable` : 'Resource timetables';
       note = state.res ? '' : `${sheets.length} resource(s) with bookings, one page each when printed.`;
@@ -251,7 +290,7 @@
         return { kind: 'timetable', title, subtitle: `${names.length} classes match. Type part of a class name to narrow it to ${MAX_CLASS_SHEETS} or fewer.`, sheets: [] };
       }
       for (const n of names) {
-        const classes = M.classes.filter((c) => c.name === n && (!state.noRes || !(M.allocsByClass.get(c.key) || []).length));
+        const classes = M.classes.filter((c) => c.name === n && (!state.noRes || !hasRes(c)));
         if (classes.length) sheets.push(makeSheet(n, '', classes, 'class'));
       }
       note = `${sheets.length} class(es), one page each when printed.`;
@@ -259,46 +298,78 @@
     return { kind: 'timetable', title, subtitle: note, sheets };
   }
 
-  function sheetDom(sheet) {
+  const FULL_DAY = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+  // One Period x Day grid for one week of a sheet -> { node, count }
+  function weekGrid(sheet, wk) {
     const days = M.days, periods = M.periods;
-    const wrap = h('section', { class: 'tt-sheet' + (sheet.big ? ' tt-big' : '') },
-      h('header', { class: 'tt-head' }, h('div', null, h('h2', null, sheet.title), sheet.subtitle ? h('p', { class: 'muted' }, sheet.subtitle) : null),
-        h('div', { class: 'tt-meta' }, h('strong', null, 'EduResourcer'), h('span', null, new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })))));
-    for (const wk of sheet.weeks || ['A', 'B']) {
-      const cellItems = new Map();
-      for (const it of sheet.items) {
-        if (it.c.week !== 'AB' && it.c.week !== wk) continue;
-        const k = it.c.day + '|' + it.c.pkey;
-        if (!cellItems.has(k)) cellItems.set(k, []);
-        cellItems.get(k).push(it);
-      }
-      const count = [...cellItems.values()].reduce((n, l) => n + l.length, 0);
-      const rows = periods.map((p) => h('tr', null,
-        h('th', { class: 'tt-p', scope: 'row' }, h('small', null, 'Period'), h('strong', null, p.label)),
-        days.map((d) => {
-          const list = (cellItems.get(d + '|' + p.pkey) || []).sort((a, b) => U.natCmp(a.l1, b.l1));
-          return h('td', { class: 'tt-cell' + (list.length ? ' has' : '') }, list.map((it) => h('div', { class: 'tt-entry' },
-            h('strong', null, it.l1, it.c.year && !sheet.hideYear ? h('span', { class: 'tt-yr' }, U.yearShort(it.c.year)) : null),
-            it.l2 ? h('span', { class: 'tt-l2' }, it.l2) : null,
-            it.res.length ? h('div', { class: 'tt-chips' }, it.res.map((r) => h('span', { class: 'tt-chip', dataset: { t: String(M.typeColour(r.typeId)) } }, r.name))) : null)));
-        })));
-      wrap.appendChild(h('div', { class: 'tt-week' },
-        h('h3', null, 'Week ' + wk, h('span', { class: 'muted' }, `  ·  ${count} lesson${count === 1 ? '' : 's'}`)),
-        h('table', { class: 'tt' },
-          h('thead', null, h('tr', null, h('th', { class: 'tt-corner' }, ''), days.map((d) => h('th', null, d)))),
-          h('tbody', null, rows))));
+    const cellItems = new Map();
+    for (const it of sheet.items) {
+      if (it.c.week !== 'AB' && it.c.week !== wk) continue;
+      if (it.weeks && !it.weeks.includes(wk)) continue;
+      const k = it.c.day + '|' + it.c.pkey;
+      if (!cellItems.has(k)) cellItems.set(k, []);
+      cellItems.get(k).push(it);
     }
-    return wrap;
+    const count = [...cellItems.values()].reduce((n, l) => n + l.length, 0);
+    const rows = periods.map((p) => h('tr', { style: '--rows:' + periods.length },
+      h('th', { class: 'tt-p', scope: 'row' }, sheet.plain ? h('span', { class: 'tt-pl' }, /^\d+$/.test(p.label) ? 'P' + p.label : p.label) : [h('small', null, 'Period'), h('strong', null, p.label)]),
+      days.map((d) => {
+        const list = (cellItems.get(d + '|' + p.pkey) || []).sort((a, b) => U.natCmp(a.l1, b.l1));
+        return h('td', { class: 'tt-cell' + (list.length ? ' has' : '') }, list.map((it) => {
+          const chips = [
+            ...it.res.map((r) => h('span', { class: 'tt-chip', dataset: { t: String(M.typeColour(r.typeId)) } }, r.name)),
+            // shared resources, for this week: ✓ has it (green), ⇄ shared with others (blue), ✕ misses out (orange)
+            ...(it.shared || []).map((s) => {
+              const r = s.byWeek[wk];
+              return r ? h('span', { class: 'tt-chip sh-' + r.status, title: ER.shared.describe({ res: s.res, byWeek: { [wk]: r } }) },
+                (r.status === 'holder' ? '✓ ' : r.status === 'shared' ? '⇄ ' : '✕ ') + s.res.name) : null;
+            }),
+          ].filter(Boolean);
+          return h('div', { class: 'tt-entry' },
+            h('strong', null, it.l1, it.c.year && !sheet.hideYear ? h('span', { class: 'tt-yr' }, U.yearShort(it.c.year)) : null),
+            it.lines ? it.lines.map((l) => h('span', { class: 'tt-l2' }, l)) : it.l2 ? h('span', { class: 'tt-l2' }, it.l2) : null,
+            it.note ? h('span', { class: 'tt-l2' }, it.note) : null,
+            chips.length ? h('div', { class: 'tt-chips' }, chips) : null);
+        }));
+      })));
+    const node = h('div', { class: 'tt-week' },
+      h('h3', null, 'Week ' + wk, h('span', { class: 'muted' }, `  ·  ${count} lesson${count === 1 ? '' : 's'}`)),
+      h('table', { class: 'tt' },
+        h('thead', null, h('tr', null, h('th', { class: 'tt-corner' }, ''), days.map((d) => h('th', null, sheet.plain ? (FULL_DAY[d] || d) : d)))),
+        h('tbody', null, rows)));
+    return { node, count };
   }
 
+  const sheetHead = (title, subtitle) => h('header', { class: 'tt-head' }, h('div', null, h('h2', null, title), subtitle ? h('p', { class: 'muted' }, subtitle) : null),
+    h('div', { class: 'tt-meta' }, h('strong', null, 'EduResourcer'), h('span', null, new Date().toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }))));
+
+  // On screen a sheet holds both weeks. For printing (`split`) every week is its own A4 portrait page with its own heading,
+  // and a week with no lessons is left out (unless that would leave nothing).
+  function sheetDom(sheet, split) {
+    const cls = 'tt-sheet' + (sheet.big ? ' tt-big' : '') + (sheet.plain ? ' tt-plain' : '');
+    const weeks = sheet.weeks || ['A', 'B'];
+    if (!split) {
+      const wrap = h('section', { class: cls }, sheetHead(sheet.title, sheet.subtitle));
+      for (const wk of weeks) wrap.appendChild(weekGrid(sheet, wk).node);
+      return wrap;
+    }
+    const grids = weeks.map((wk) => ({ wk, ...weekGrid(sheet, wk) }));
+    const keep = grids.filter((g) => g.count > 0);
+    const frag = document.createDocumentFragment();
+    for (const g of keep.length ? keep : grids.slice(0, 1)) {
+      const title = weeks.length > 1 ? `${sheet.title} — Week ${g.wk}` : sheet.title;       // sheets for one week already say which
+      frag.appendChild(h('section', { class: cls }, sheetHead(title, sheet.subtitle), g.node));
+    }
+    return frag;
+  }
   const BUILD = { resource: resourceReport, class: () => classReport('class'), year: () => classReport('year'), subject: () => classReport('subject'), room: () => classReport('room'), teacher: () => classReport('teacher'), shared: sharedReport, free: freeReport };
 
   // ---------- rendering ----------
-  function resultDom(rep) {
+  function resultDom(rep, split) {
     if (rep.kind === 'timetable') {
       const wrap = h('div', { class: 'rep tt-wrap' }, h('div', { class: 'tt-intro' }, h('h2', null, rep.title), rep.subtitle ? h('p', { class: 'muted rep-sub' }, rep.subtitle) : null));
       if (!rep.sheets.length) wrap.appendChild(h('p', { class: 'empty-note' }, 'Nothing to show.'));
-      rep.sheets.forEach((s) => wrap.appendChild(sheetDom(s)));
+      rep.sheets.forEach((s) => wrap.appendChild(sheetDom(s, split)));
       return wrap;
     }
     const wrap = h('div', { class: 'rep' },
@@ -357,28 +428,29 @@
 
   function printIt() {
     if (!current || denyExport()) return;
-    printDom(resultDom(current), current.kind === 'timetable');
+    printDom(resultDom(current, true), current.kind === 'timetable');
   }
 
-  // Whole-school (or filtered) timetable: one landscape sheet per week, every class in its Period x Day cell.
+  // Whole-school (or filtered) timetable: one A4 portrait page per week, every class in its Period x Day cell.
   // opts: { classes, weeks:['A','B'], title, subtitle, byYear }  (byYear: a separate page per year group)
   R.printTimetable = (opts) => {
     if (denyExport()) return;
     const items = opts.classes.map((c) => ({
       c, l1: c.name, l2: [c.room, c.teacher].filter(Boolean).join(' · '),
-      res: M.resourcesOfClass(c.key).map((x) => x.res).filter(Boolean),
+      res: M.resourcesOfClass(c.key).map((x) => x.res).filter(Boolean), shared: sharedOf(c),
+      lines: [[c.room, c.teacher].filter(Boolean).join(' · ')].filter(Boolean),     // whole-school cells hold many classes, so room and teacher share one line
     }));
     const wrap = h('div', { class: 'rep tt-wrap' });
     if (opts.byYear) {
       const years = [...new Set(items.map((it) => it.c.year || ''))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || U.yearCmp(a, b));
       for (const y of years) {
         for (const wk of opts.weeks) {
-          wrap.appendChild(sheetDom({ title: `${y || 'No year group'} — Week ${wk}`, subtitle: opts.subtitle, items: items.filter((it) => (it.c.year || '') === y), weeks: [wk], big: true, hideYear: true }));
+          wrap.appendChild(sheetDom({ title: `${y || 'No year group'} — Week ${wk}`, subtitle: opts.subtitle, items: items.filter((it) => (it.c.year || '') === y), weeks: [wk], big: true, plain: true, hideYear: true }), true);
         }
       }
     } else {
       for (const wk of opts.weeks) {
-        wrap.appendChild(sheetDom({ title: `${opts.title} — Week ${wk}`, subtitle: opts.subtitle, items, weeks: [wk], big: true }));
+        wrap.appendChild(sheetDom({ title: `${opts.title} — Week ${wk}`, subtitle: opts.subtitle, items, weeks: [wk], big: true, plain: true }), true);
       }
     }
     printDom(wrap, true);
